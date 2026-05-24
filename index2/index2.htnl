@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <title>מערכת חילוץ נתוני שוק</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+
+    /**
+     * =====================================================
+     * CHECKLIST - מניעת כשלים נפוצים
+     * =====================================================
+     *
+     * ✅ לא להשתמש ב־mode: 'no-cors'
+     * ✅ שימוש מדויק במפתחות:
+     *    tickers
+     *    startDate
+     *    endDate
+     *    frequency
+     *    action
+     * ✅ Content-Type חייב להיות:
+     *    text/plain;charset=utf-8
+     * ✅ JSON.stringify(payload)
+     * ✅ בדיקות תקינות לפני fetch
+     * ✅ טיפול מלא בשגיאות
+     * =====================================================
+     */
+
+    body {
+      overflow-x: hidden;
+      background:
+        radial-gradient(circle at top left, rgba(59,130,246,0.35), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(168,85,247,0.30), transparent 30%),
+        linear-gradient(135deg, #020617, #0f172a, #111827);
+      background-size: 200% 200%;
+      animation: gradientMove 15s ease infinite;
+      font-family: sans-serif;
+    }
+
+    @keyframes gradientMove {
+      0% {
+        background-position: 0% 50%;
+      }
+      50% {
+        background-position: 100% 50%;
+      }
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+
+    .floating {
+      position: absolute;
+      border-radius: 9999px;
+      background: rgba(255,255,255,0.05);
+      animation: float 14s infinite linear;
+      filter: blur(2px);
+    }
+
+    @keyframes float {
+      from {
+        transform: translateY(100vh) scale(1);
+      }
+      to {
+        transform: translateY(-120vh) scale(1.4);
+      }
+    }
+
+    .glass {
+      backdrop-filter: blur(24px);
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      box-shadow:
+        0 8px 32px rgba(0,0,0,0.3),
+        inset 0 1px 1px rgba(255,255,255,0.08);
+    }
+
+    .glow-btn {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .glow-btn::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -120%;
+      width: 120%;
+      height: 100%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255,255,255,0.3),
+        transparent
+      );
+      transition: 0.7s;
+    }
+
+    .glow-btn:hover::before {
+      left: 120%;
+    }
+
+    .loader {
+      width: 70px;
+      height: 70px;
+      border: 6px solid rgba(255,255,255,0.2);
+      border-top: 6px solid #38bdf8;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: auto;
+    }
+
+    @keyframes spin {
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    table th,
+    table td {
+      padding: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      text-align: center;
+    }
+
+    table th {
+      background: rgba(255,255,255,0.08);
+    }
+
+  </style>
+</head>
+
+<body class="min-h-screen flex items-center justify-center p-6 relative text-white">
+
+  <div class="floating w-40 h-40 top-10 left-10"></div>
+  <div class="floating w-64 h-64 top-1/2 right-10"></div>
+  <div class="floating w-28 h-28 bottom-10 left-1/3"></div>
+
+  <div class="glass w-full max-w-6xl rounded-3xl p-8 md:p-12 relative z-10">
+
+    <div class="text-center mb-10">
+
+      <h1 class="text-5xl font-black mb-4 bg-gradient-to-r from-cyan-300 to-purple-400 bg-clip-text text-transparent">
+        מערכת חילוץ נתוני שוק
+      </h1>
+
+      <p class="text-slate-200 text-lg leading-8 max-w-3xl mx-auto">
+        ברוכים הבאים למערכת חילוץ הנתונים.
+        כאן תוכלו לשלוף שערי סגירה למספר מניות במקביל,
+        להשוות ביניהן בסדרות-זמן, ולייצא בקליק.
+      </p>
+
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <div>
+        <label class="block mb-2 text-slate-200 font-bold">
+          סימולי מניות
+        </label>
+
+        <input
+          id="tickers"
+          type="text"
+          placeholder="AAPL, MSFT, GOOGL"
+          class="w-full rounded-2xl bg-white/10 border border-white/10 px-5 py-4 text-white outline-none focus:ring-2 focus:ring-cyan-400"
+        />
+
+        <p class="text-sm text-slate-300 mt-2">
+          הזן סימולי מניות, מופרדים בפסיק
+        </p>
+      </div>
+
+      <div>
+        <label class="block mb-2 text-slate-200 font-bold">
+          תדירות
+        </label>
+
+        <select
+          id="frequency"
+          class="w-full rounded-2xl bg-white/10 border border-white/10 px-5 py-4 text-white outline-none focus:ring-2 focus:ring-cyan-400"
+        >
+          <option class="text-black" value="daily">daily</option>
+          <option class="text-black" value="weekly">weekly</option>
+          <option class="text-black" value="monthly">monthly</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block mb-2 text-slate-200 font-bold">
+          תאריך התחלה
+        </label>
+
+        <input
+          id="startDate"
+          type="date"
+          class="w-full rounded-2xl bg-white/10 border border-white/10 px-5 py-4 text-white outline-none focus:ring-2 focus:ring-cyan-400"
+        />
+      </div>
+
+      <div>
+        <label class="block mb-2 text-slate-200 font-bold">
+          תאריך סיום
+        </label>
+
+        <input
+          id="endDate"
+          type="date"
+          class="w-full rounded-2xl bg-white/10 border border-white/10 px-5 py-4 text-white outline-none focus:ring-2 focus:ring-cyan-400"
+        />
+      </div>
+
+    </div>
+
+    <div class="text-center mt-10">
+
+      <button
+        id="loadBtn"
+        class="glow-btn px-10 py-4 rounded-2xl text-xl font-bold bg-gradient-to-r from-cyan-500 to-purple-600 hover:scale-105 transition-all duration-300 shadow-2xl shadow-cyan-500/20"
+      >
+        טען נתונים
+      </button>
+
+    </div>
+
+    <div id="messageBox" class="mt-8"></div>
+
+    <div id="previewContainer" class="mt-10 overflow-x-auto"></div>
+
+    <div
+      id="exportButtons"
+      class="hidden mt-10 flex flex-col md:flex-row gap-4 justify-center"
+    >
+
+      <button
+        id="downloadCsvBtn"
+        class="px-8 py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 transition-all font-bold text-lg shadow-xl"
+      >
+        הורד כ-CSV
+      </button>
+
+      <button
+        id="exportSheetBtn"
+        class="px-8 py-4 rounded-2xl bg-indigo-500 hover:bg-indigo-400 transition-all font-bold text-lg shadow-xl"
+      >
+        ייצא ל-Google Sheets
+      </button>
+
+    </div>
+
+  </div>
+
+  <script>
+
+    let globalCsvData = "";
+
+    const WEB_APP_URL =
+      "[!!! REPLACE_WITH_YOUR_DEPLOYED_WEB_APP_URL !!!]";
+
+    const messageBox =
+      document.getElementById("messageBox");
+
+    const previewContainer =
+      document.getElementById("previewContainer");
+
+    const exportButtons =
+      document.getElementById("exportButtons");
+
+    /**
+     * =====================================================
+     * הודעות
+     * =====================================================
+     */
+    function showMessage(html) {
+      messageBox.innerHTML = html;
+    }
+
+    /**
+     * =====================================================
+     * הודעת שגיאה
+     * =====================================================
+     */
+    function showError(message) {
+
+      showMessage(`
+        <div class="bg-red-500/20 border border-red-400 text-red-100 rounded-2xl p-5 text-center text-lg">
+          ${message}
+        </div>
+      `);
+    }
+
+    /**
+     * =====================================================
+     * Loader
+     * =====================================================
+     */
+    function showLoader() {
+
+      showMessage(`
+        <div class="text-center py-8">
+          <div class="loader mb-5"></div>
+
+          <div class="text-xl font-bold text-cyan-300 animate-pulse">
+            מושך נתוני שוק...
+          </div>
+        </div>
+      `);
+    }
+
+    /**
+     * =====================================================
+     * טעינת נתונים
+     * =====================================================
+     */
+    document
+      .getElementById("loadBtn")
+      .addEventListener("click", async function() {
+
+        previewContainer.innerHTML = "";
+        exportButtons.classList.add("hidden");
+
+        const tickers =
+          document.getElementById("tickers").value.trim();
+
+        const startDate =
+          document.getElementById("startDate").value;
+
+        const endDate =
+          document.getElementById("endDate").value;
+
+        // ===============================================
+        // ולידציות
+        // ===============================================
+        if (!tickers) {
+
+          showError(
+            "אופס! יש להזין לפחות סימול מניה אחד."
+          );
+
+          return;
+        }
+
+        if (!startDate || !endDate) {
+
+          showError(
+            "אופס! יש לבחור תאריכי התחלה וסיום."
+          );
+
+          return;
+        }
+
+        if (new Date(startDate) > new Date(endDate)) {
+
+          showError(
+            "אופס! נראה שתאריך ההתחלה מאוחר מתאריך הסיום..."
+          );
+
+          return;
+        }
+
+        showLoader();
+
+        try {
+
+          // =================================================
+          // MANDATORY EXACT PAYLOAD
+          // =================================================
+          const payload = {
+            tickers: document.getElementById('tickers').value,
+            startDate: document.getElementById('startDate').value,
+            endDate: document.getElementById('endDate').value,
+            frequency: document.getElementById('frequency').value,
+            action: 'csv'
+          };
+
+          // =================================================
+          // FETCH
+          // =================================================
+          const response = await fetch(WEB_APP_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await response.json();
+
+          if (data.status !== "success") {
+            throw new Error(
+              data.message || "Unknown error"
+            );
+          }
+
+          globalCsvData = data.csvData;
+
+          buildPreviewTable(globalCsvData);
+
+          exportButtons.classList.remove("hidden");
+
+          showMessage(`
+            <div class="bg-emerald-500/20 border border-emerald-400 text-emerald-100 rounded-2xl p-5 text-center text-lg">
+              הנתונים נטענו בהצלחה
+            </div>
+          `);
+
+        } catch(error) {
+
+          console.error(error);
+
+          showError(
+            "אירעה שגיאה בעת טעינת הנתונים."
+          );
+        }
+
+      });
+
+    /**
+     * =====================================================
+     * בניית טבלת Preview
+     * =====================================================
+     */
+    function buildPreviewTable(csvData) {
+
+      const rows =
+        csvData
+          .trim()
+          .split("\n")
+          .map(row => row.split(","));
+
+      const previewRows = rows.slice(0, 6);
+
+      let html = `
+        <div class="glass rounded-3xl overflow-hidden mt-8">
+          <table>
+      `;
+
+      for (let i = 0; i < previewRows.length; i++) {
+
+        html += "<tr>";
+
+        for (let j = 0; j < previewRows[i].length; j++) {
+
+          if (i === 0) {
+
+            html += `
+              <th class="text-cyan-300">
+                ${previewRows[i][j]}
+              </th>
+            `;
+
+          } else {
+
+            html += `
+              <td>
+                ${previewRows[i][j]}
+              </td>
+            `;
+          }
+        }
+
+        html += "</tr>";
+      }
+
+      html += `
+          </table>
+        </div>
+      `;
+
+      previewContainer.innerHTML = html;
+    }
+
+    /**
+     * =====================================================
+     * הורדת CSV
+     * =====================================================
+     */
+    document
+      .getElementById("downloadCsvBtn")
+      .addEventListener("click", function() {
+
+        const blob = new Blob(
+          [globalCsvData],
+          { type: "text/csv;charset=utf-8;" }
+        );
+
+        const url =
+          URL.createObjectURL(blob);
+
+        const a =
+          document.createElement("a");
+
+        a.href = url;
+        a.download = "market-data.csv";
+
+        document.body.appendChild(a);
+
+        a.click();
+
+        document.body.removeChild(a);
+
+        URL.revokeObjectURL(url);
+      });
+
+    /**
+     * =====================================================
+     * ייצוא ל־Google Sheets
+     * =====================================================
+     */
+    document
+      .getElementById("exportSheetBtn")
+      .addEventListener("click", async function() {
+
+        try {
+
+          showLoader();
+
+          const payload = {
+            tickers: document.getElementById('tickers').value,
+            startDate: document.getElementById('startDate').value,
+            endDate: document.getElementById('endDate').value,
+            frequency: document.getElementById('frequency').value,
+            action: 'sheet'
+          };
+
+          const response = await fetch(WEB_APP_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8'
+            },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await response.json();
+
+          if (data.status !== "success") {
+            throw new Error(data.message);
+          }
+
+          showMessage(`
+            <div class="bg-emerald-500/20 border border-emerald-400 text-emerald-100 rounded-2xl p-6 text-center">
+
+              <div class="text-2xl font-bold mb-3">
+                הייצוא הושלם בהצלחה
+              </div>
+
+              <a
+                href="${data.sheetUrl}"
+                target="_blank"
+                class="inline-block mt-3 px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 transition-all font-bold"
+              >
+                פתח את Google Sheets
+              </a>
+
+            </div>
+          `);
+
+        } catch(error) {
+
+          console.error(error);
+
+          showError(
+            "אירעה שגיאה בעת ייצוא הנתונים."
+          );
+        }
+
+      });
+
+  </script>
+
+</body>
+</html>
